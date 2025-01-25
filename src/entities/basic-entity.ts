@@ -24,8 +24,15 @@ export class BasicEntity implements Entity {
     // 1. 更新生命體徵
     this.vitalSigns.updateVitals();
 
-    // 2. 感知環境
-    const perceptionInfo = this.perception.perceive(/* 需要世界狀態 */);
+    // 2. 感知環境，並包含生命體徵信息
+    const perceptionInfo = {
+      ...this.perception.perceive(/* 需要世界狀態 */),
+      vitalSigns: {
+        energy: this.vitalSigns.energy,
+        hunger: this.vitalSigns.hunger,
+        health: this.vitalSigns.health
+      }
+    };
 
     // 3. 決策
     const action = this.decisionMaking.decide(perceptionInfo);

@@ -7,6 +7,7 @@ import { GameTimeElement } from './game-time';
 import { EntityManager } from '../systems/entity-manager';
 import { BasicEntity } from '../entities/basic-entity';
 import { Entity } from '../types/entity.types';
+import { ResourceManager } from '../systems/resource-manager';
 
 @customElement('world-map')
 export class WorldMapElement extends LitElement {
@@ -17,6 +18,7 @@ export class WorldMapElement extends LitElement {
   private entities: Entity[] = [];
 
   private entityManager = EntityManager.getInstance();
+  private resourceManager = ResourceManager.getInstance();
 
   @state()
   private environmentFactors = {
@@ -100,6 +102,21 @@ export class WorldMapElement extends LitElement {
       pointer-events: none;
       z-index: 2;
     }
+
+    .resource {
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 1;
+    }
+
+    .resource.FOOD { background-color: #90EE90; }
+    .resource.WATER { background-color: #87CEEB; }
+    .resource.MINERAL { background-color: #B8860B; }
+    .resource.WOOD { background-color: #8B4513; }
+    .resource.HERB { background-color: #98FB98; }
   `;
 
   private getTerrainColor(type: TerrainType): string {
@@ -151,6 +168,25 @@ export class WorldMapElement extends LitElement {
     });
   }
 
+  private renderResources() {
+    if (!this.worldMap) return '';
+    
+    const tileWidth = 100 / this.worldMap.width;
+    const tileHeight = 100 / this.worldMap.height;
+    
+    return this.resourceManager.getAllResources().map(resource => {
+      const left = `${(resource.position.x + 0.5) * tileWidth}%`;
+      const top = `${(resource.position.y + 0.5) * tileHeight}%`;
+      
+      return html`
+        <div class="resource ${resource.type}"
+             style="left: ${left}; top: ${top};"
+             title="${resource.type}
+數量: ${Math.floor(resource.amount)}/${resource.maxAmount}"></div>
+      `;
+    });
+  }
+
   private renderMap() {
     if (!this.worldMap) return html``;
 
@@ -162,12 +198,9 @@ export class WorldMapElement extends LitElement {
         ${this.worldMap.tiles.flat().map(tile => html`
           <div class="map-tile" 
                style="background-color: ${TerrainSystem.getTerrainColor(tile.terrain.type)}"
-               title="地形: ${tile.terrain.type}
-溫度: ${tile.terrain.temperature}°C
-濕度: ${tile.terrain.humidity}%
-肥沃度: ${tile.terrain.fertility}%
-海拔: ${tile.terrain.elevation}m"></div>
+               title="地形: ${tile.terrain.type}"></div>
         `)}
+        ${this.renderResources()}
         ${this.renderEntities()}
       </div>
     `;
@@ -196,7 +229,8 @@ export class WorldMapElement extends LitElement {
       height: 20
     });
     this.worldMap = mapGenerator.generate();
-    this.spawnEntities(); // 重新生成地圖時也重新生成實體
+    this.resourceManager.generateResources(this.worldMap);
+    this.spawnEntities();
   }
 
   connectedCallback() {
