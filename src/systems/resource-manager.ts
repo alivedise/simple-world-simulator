@@ -2,6 +2,7 @@ import { ResourceType, ResourceProperties, ResourceDefinition } from '../types/r
 import { TerrainType } from '../types/map.types';
 import { GameLoop } from './game-loop';
 import { TimeSystem } from './time-system';
+import { Position } from '../types/entity.types';
 
 export class ResourceManager {
   private static instance: ResourceManager;
@@ -64,7 +65,9 @@ export class ResourceManager {
   };
 
   private constructor() {
-    GameLoop.getInstance().subscribe(this.update.bind(this));
+    GameLoop.getInstance().subscribe((deltaTime: number) => {
+      this.update(deltaTime);
+    });
   }
 
   public static getInstance(): ResourceManager {
@@ -127,7 +130,7 @@ export class ResourceManager {
     return actualAmount;
   }
 
-  private update(deltaTime: number): void {
+  public update(deltaTime: number): void {
     const currentTime = Date.now();
     
     this.resources.forEach((resource, key) => {
@@ -149,5 +152,40 @@ export class ResourceManager {
 
   public getAllResources(): ResourceProperties[] {
     return Array.from(this.resources.values());
+  }
+
+  public getResourcesInRange(x: number, y: number, range: number): ResourceProperties[] {
+    return Array.from(this.resources.values()).filter(resource => {
+      const dx = resource.position.x - x;
+      const dy = resource.position.y - y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      return distance <= range;
+    });
+  }
+
+  private getResourceKey(x: number, y: number, type: ResourceType): string {
+    return `${x},${y},${type}`;
+  }
+
+  public addResource(resource: ResourceDefinition): void {
+    const key = this.getResourceKey(
+      resource.position.x,
+      resource.position.y,
+      resource.type
+    );
+    
+    this.resources.set(key, {
+      ...resource,
+      lastRegenTime: Date.now()
+    });
+  }
+
+  public getResource(x: number, y: number, type: ResourceType): ResourceProperties | undefined {
+    const key = this.getResourceKey(x, y, type);
+    return this.resources.get(key);
+  }
+
+  public clear(): void {
+    this.resources.clear();
   }
 } 

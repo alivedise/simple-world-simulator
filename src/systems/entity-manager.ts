@@ -1,14 +1,12 @@
 import { Entity, Position } from '../types/entity.types';
-import { GameLoop } from './game-loop';
 
 export class EntityManager {
   private static instance: EntityManager;
   private entities: Map<string, Entity> = new Map();
+  private entitiesToRemove: Set<string> = new Set();
+  private lastUpdate: number = Date.now();
 
-  private constructor() {
-    // 訂閱遊戲循環
-    GameLoop.getInstance().subscribe(this.updateEntities.bind(this));
-  }
+  private constructor() {}
 
   public static getInstance(): EntityManager {
     if (!EntityManager.instance) {
@@ -21,8 +19,16 @@ export class EntityManager {
     this.entities.set(entity.id, entity);
   }
 
-  public removeEntity(id: string): void {
-    this.entities.delete(id);
+  public removeEntity(entityId: string): void {
+    this.entitiesToRemove.add(entityId);
+  }
+
+  public getEntity(entityId: string): Entity | undefined {
+    return this.entities.get(entityId);
+  }
+
+  public getAllEntities(): Entity[] {
+    return Array.from(this.entities.values());
   }
 
   public getEntitiesInRange(position: Position, range: number): Entity[] {
@@ -33,21 +39,53 @@ export class EntityManager {
     });
   }
 
-  private updateEntities(deltaTime: number): void {
-    this.entities.forEach(entity => {
-      try {
-        entity.tick(deltaTime);
-      } catch (error) {
-        console.error(`Error updating entity ${entity.id}:`, error);
-      }
-    });
+  public update(): void {
+    try {
+      const currentTime = Date.now();
+      const deltaTime = currentTime - this.lastUpdate;
+      this.lastUpdate = currentTime;
+
+      // 處理待移除的實體
+      this.entitiesToRemove.forEach(entityId => {
+        this.entities.delete(entityId);
+      });
+      this.entitiesToRemove.clear();
+
+      // 更新所有實體
+      this.entities.forEach(entity => {
+        try {
+          if (entity && typeof entity.tick === 'function') {
+            entity.tick(deltaTime);
+          }
+        } catch (error) {
+          console.warn(`Error updating entity ${entity.id}:`, error);
+          // 如果實體更新失敗，將其標記為待移除
+          this.entitiesToRemove.add(entity.id);
+        }
+      });
+    } catch (error) {
+      console.error('Error in EntityManager update:', error);
+    }
   }
 
-  public getEntityById(id: string): Entity | undefined {
-    return this.entities.get(id);
+  public clear(): void {
+    this.entities.clear();
+    this.entitiesToRemove.clear();
   }
 
-  public getAllEntities(): Entity[] {
-    return Array.from(this.entities.values());
+  // 用於調試
+  public getEntityCount(): number {
+    return this.entities.size;
+  }
+
+  public validateEntity(entity: Entity): boolean {
+    return (
+      entity &&
+      typeof entity.id === 'string' &&
+      typeof entity.position === 'object' &&
+      typeof entity.position.x === 'number' &&
+      typeof entity.position.y === 'number' &&
+      typeof entity.tick === 'function'
+    );
   }
 } 

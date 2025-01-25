@@ -8,6 +8,11 @@ import { EntityManager } from '../systems/entity-manager';
 import { BasicEntity } from '../entities/basic-entity';
 import { Entity } from '../types/entity.types';
 import { ResourceManager } from '../systems/resource-manager';
+import './resource-hex';
+import './entity-creature';
+import { SpeciesManager } from '../systems/species-manager';
+import './fps-counter';
+import { GameLoop } from '../systems/game-loop';
 
 @customElement('world-map')
 export class WorldMapElement extends LitElement {
@@ -26,6 +31,8 @@ export class WorldMapElement extends LitElement {
     humidity: 60,
     timeOfDay: 12,
   };
+
+  private gameLoop = GameLoop.getInstance();
 
   static styles = css`
     :host {
@@ -124,26 +131,54 @@ export class WorldMapElement extends LitElement {
   }
 
   private spawnEntities() {
+    const speciesManager = SpeciesManager.getInstance();
+    const availableSpecies = speciesManager.getAllSpecies();
+    
     // 清除現有實體
     this.entities.forEach(entity => {
       this.entityManager.removeEntity(entity.id);
     });
 
-    // 隨機生成10個實體
-    const newEntities: Entity[] = [];
-    for (let i = 0; i < 10; i++) {
-      const entity = new BasicEntity(
-        {
-          x: Math.floor(Math.random() * (this.worldMap?.width || 30)),
-          y: Math.floor(Math.random() * (this.worldMap?.height || 20))
-        },
-        'basic',
-        1
-      );
-      this.entityManager.addEntity(entity);
-      newEntities.push(entity);
-    }
+    // 為每種物種分配不同的數量
+    const speciesDistribution = new Map<string, number>([
+      ['deer', 65],    // 草食性動物較多
+      ['raccoon', 35]  // 雜食性動物較少
+    ]);
+
+    // 生成實體
+    const newEntities = availableSpecies.flatMap(species => {
+      const count = speciesDistribution.get(species.id) || 0;
+      return Array.from({ length: count }, () => {
+        // 隨機生成群組位置作為中心點
+        const centerX = Math.floor(Math.random() * (this.worldMap?.width || 30));
+        const centerY = Math.floor(Math.random() * (this.worldMap?.height || 20));
+        
+        // 在中心點周圍隨機分散
+        const scatter = 3; // 分散範圍
+        const x = Math.max(0, Math.min(this.worldMap?.width || 30,
+          centerX + (Math.random() - 0.5) * scatter * 2));
+        const y = Math.max(0, Math.min(this.worldMap?.height || 20,
+          centerY + (Math.random() - 0.5) * scatter * 2));
+
+        const entity = new BasicEntity(
+          {
+            x: Math.floor(x),
+            y: Math.floor(y)
+          },
+          species.id
+        );
+        this.entityManager.addEntity(entity);
+        return entity;
+      });
+    });
+
     this.entities = newEntities;
+
+    // 確保遊戲循環在實體生成後運行
+    if (!this.gameLoop.isGameRunning()) {
+      console.log('Restarting game loop after entity spawn...');
+      this.gameLoop.start();
+    }
   }
 
   private renderEntities() {
@@ -151,19 +186,20 @@ export class WorldMapElement extends LitElement {
     
     const tileWidth = 100 / this.worldMap.width;
     const tileHeight = 100 / this.worldMap.height;
-
+    
     return this.entities.map(entity => {
       const left = `${(entity.position.x + 0.5) * tileWidth}%`;
       const top = `${(entity.position.y + 0.5) * tileHeight}%`;
       
       return html`
-        <div class="entity" 
-             style="left: ${left}; top: ${top};"
-             title="ID: ${entity.id}
-位置: (${entity.position.x}, ${entity.position.y})
-生命: ${entity.vitalSigns.health}
-能量: ${entity.vitalSigns.energy}
-飢餓: ${entity.vitalSigns.hunger}"></div>
+        <entity-creature
+          .species=${entity.species}
+          .health=${entity.vitalSigns.health}
+          .energy=${entity.vitalSigns.energy}
+          .hunger=${entity.vitalSigns.hunger}
+          .status=${entity.vitalSigns.getStatus()}
+          style="left: ${left}; top: ${top};"
+        ></entity-creature>
       `;
     });
   }
@@ -179,10 +215,15 @@ export class WorldMapElement extends LitElement {
       const top = `${(resource.position.y + 0.5) * tileHeight}%`;
       
       return html`
-        <div class="resource ${resource.type}"
-             style="left: ${left}; top: ${top};"
-             title="${resource.type}
-數量: ${Math.floor(resource.amount)}/${resource.maxAmount}"></div>
+        <resource-hex
+          .type=${resource.type}
+          .amount=${resource.amount}
+          .maxAmount=${resource.maxAmount}
+          style="left: ${left}; top: ${top};"
+          title="${resource.type}
+數量: ${Math.floor(resource.amount)}/${resource.maxAmount}
+恢復率: ${resource.regenerationRate}/秒"
+        ></resource-hex>
       `;
     });
   }
@@ -210,6 +251,7 @@ export class WorldMapElement extends LitElement {
     return html`
       <div class="map-container">
         <game-time class="time-display"></game-time>
+        <fps-counter></fps-counter>
         <div class="controls">
           <button class="generate-btn" @click=${this.regenerateMap}>
             重新生成地圖
@@ -231,10 +273,18 @@ export class WorldMapElement extends LitElement {
     this.worldMap = mapGenerator.generate();
     this.resourceManager.generateResources(this.worldMap);
     this.spawnEntities();
+
+    // 確保遊戲循環在地圖重新生成後運行
+    if (!this.gameLoop.isGameRunning()) {
+      console.log('Restarting game loop after map regeneration...');
+      this.gameLoop.start();
+    }
   }
 
   connectedCallback() {
     super.connectedCallback();
+    console.log('WorldMap connected, starting game loop...');
+    this.gameLoop.start();
     this.initializeMap();
     
     // 訂閱實體更新
@@ -262,5 +312,11 @@ export class WorldMapElement extends LitElement {
       ...this.environmentFactors,
       timeOfDay: (this.environmentFactors.timeOfDay + 1) % 24,
     };
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    console.log('WorldMap disconnected, stopping game loop...');
+    this.gameLoop.stop();
   }
 } 
