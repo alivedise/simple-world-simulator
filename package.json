@@ -1,7 +1,7 @@
 {
-  "name": "lit-tryer",
+  "name": "simple-world-generator",
   "version": "1.0.0",
-  "description": "",
+  "description": "A simple world generator for a game",
   "main": "index.js",
   "scripts": {
     "dev": "vite",
