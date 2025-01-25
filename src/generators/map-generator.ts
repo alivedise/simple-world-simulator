@@ -1,4 +1,5 @@
 import { TerrainType, TerrainProperties, MapTile, WorldMap, MapGeneratorConfig } from '../types/map.types';
+import { TerrainSystem } from '../systems/terrain-system';
 
 export class MapGenerator {
   private config: Required<MapGeneratorConfig>;
@@ -21,60 +22,20 @@ export class MapGenerator {
     return value - Math.floor(value);
   }
 
-  private getTerrainType(elevation: number, moisture: number): TerrainType {
-    if (elevation < this.config.oceanRatio) {
-      return TerrainType.OCEAN;
-    }
-    if (elevation > 1 - this.config.mountainRatio) {
-      return TerrainType.MOUNTAIN;
-    }
-    if (moisture < 0.3) {
-      return TerrainType.DESERT;
-    }
-    if (moisture < 0.6) {
-      return TerrainType.GRASSLAND;
-    }
-    return TerrainType.FOREST;
-  }
-
   private generateTerrainProperties(x: number, y: number): TerrainProperties {
     const elevation = this.generateNoise(x, y);
     const moisture = this.generateNoise(x + 1000, y + 1000);
-    const type = this.getTerrainType(elevation, moisture);
+    const temperature = this.generateNoise(x + 2000, y + 2000);
 
-    const baseProperties: Record<TerrainType, Partial<TerrainProperties>> = {
-      [TerrainType.OCEAN]: {
-        temperature: 20,
-        humidity: 90,
-        fertility: 30
-      },
-      [TerrainType.DESERT]: {
-        temperature: 40,
-        humidity: 10,
-        fertility: 5
-      },
-      [TerrainType.GRASSLAND]: {
-        temperature: 25,
-        humidity: 60,
-        fertility: 70
-      },
-      [TerrainType.FOREST]: {
-        temperature: 22,
-        humidity: 80,
-        fertility: 90
-      },
-      [TerrainType.MOUNTAIN]: {
-        temperature: 10,
-        humidity: 40,
-        fertility: 20
-      }
-    };
-
-    return {
-      type,
-      elevation: elevation * 100,
-      ...baseProperties[type],
-    } as TerrainProperties;
+    const terrainType = TerrainSystem.determineTerrainType(elevation, moisture, temperature);
+    const baseProperties = TerrainSystem.getTerrainProperties(terrainType);
+    
+    return TerrainSystem.modifyTerrainProperties(
+      baseProperties,
+      elevation,
+      moisture,
+      temperature
+    );
   }
 
   public generate(): WorldMap {
